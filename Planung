@@ -1,0 +1,50 @@
+Aktienkennzahlen:
+
+10
+Aktienanzahl                            (Share Count)
+Marktkapitalisierung                    (market capitalization)
+Streubesitz                             (Free Float)
+Ergebnis je Aktie                       (Earnings per Share oder EPS)
+KGV oder Kurs-Gewinn-Verhältnis         (Price-Earnings-Ratio bzw. PER)
+Gewinnwachstum                          (Earningsgrowth)
+Dividendenrendite                       (dividend yield)
+KUV oder Kurs-Umsatz-Verhältnis         (P/S or Price to Sales Ratio)
+KCV oder Kurs-Cashflow-Verhältnis       (KCV or price to cash flow ratio)
+KBV oder Kurs-Buchwert-Verhältnis       (P/B or price to book ratio)
+
+2
+Eigenkapitalquote und Verschuldungsgrad (equity ratio)
+Eigenkapitalrendite                     (return on equity)
+
+
+Methoden:
+
+Möglichst 10(später 12) KZ für Aktien über ein Zeitraum von 1(später 10) Jahr, Minütlich
+Vorraussage erst stündlich dann täglich, monatlich dann Jährlich
+
+
+
+
+Webscraping für KZ Daten (Tool)
+Erst eine Kennzahl
+Dann 10 bzw 12
+
+Daten transformieren
+
+Modelle:
+Erst eine Kennzahl
+verschiedene Modelle(Transformerbasiert?)
+
+
+api
+
+Schnittstelle pogramm-> tradingseite
+
+
+FLow
+
+Programm bekommt daten aus webscraping
+Programm verarbeitet daten aus Seite
+Verbindung zur Tradingseite-> LOGIN
+Trade
+
