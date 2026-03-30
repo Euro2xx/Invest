@@ -264,7 +264,8 @@ viz_option = st.radio("Visualisierungstyp:", [
     "Einzelne Unternehmen",
     "Vergleich am Ereignis-Tag",
     "Zusammenfassungsstatistiken",
-    "Prozentuale Änderung & EPS"
+    "Prozentuale Änderung & EPS",
+    "Earnings Metriken"
 ])
 
 if viz_option == "Überlagerte Aktienkurse":
@@ -342,5 +343,57 @@ elif viz_option == "Prozentuale Änderung & EPS":
             st.dataframe(display_eps, width='stretch')
         else:
             st.info("Keine EPS-Daten verfügbar.")
+    else:
+        st.info("Keine Daten zur Visualisierung vorhanden.")
+
+elif viz_option == "Earnings Metriken":
+    st.write("Umfassende Earnings-Analyse: EPS Surprise, Price Move (Earnings Reaction) und Guidance:")
+    fig = viz.plot_earnings_metrics()
+    if fig:
+        st.plotly_chart(fig, width='stretch')
+        
+        # Detaillierte Metriken-Tabelle
+        st.subheader("📈 Detaillierte Earnings Metriken")
+        earnings_metrics = viz.get_eps_comparison()
+        if earnings_metrics is not None and not earnings_metrics.empty:
+            # Formatiere für Anzeige
+            display_metrics = earnings_metrics.copy()
+            display_metrics = display_metrics.sort_values('EPS Surprise (%)', ascending=False, na_position='last')
+            
+            # Formatiere Zahlen für bessere Lesbarkeit
+            numeric_cols = ['EPS Estimate', 'EPS Actual', 'EPS Unterschied', 'EPS Surprise (%)', 'Price Move (%)']
+            for col in numeric_cols:
+                if col in display_metrics.columns:
+                    display_metrics[col] = display_metrics[col].apply(
+                        lambda x: f"{x:.2f}" if isinstance(x, (int, float)) and not pd.isna(x) else x
+                    )
+            
+            st.dataframe(display_metrics, width='stretch')
+            
+            # Zusammenfassung
+            st.subheader("📊 Zusammenfassung")
+            col1, col2, col3, col4 = st.columns(4)
+            
+            # Positive Surprises
+            positive_surprises = earnings_metrics[earnings_metrics['EPS Surprise (%)'] > 0]
+            with col1:
+                st.metric("Positive Surprises", len(positive_surprises))
+            
+            # Negative Surprises
+            negative_surprises = earnings_metrics[earnings_metrics['EPS Surprise (%)'] < 0]
+            with col2:
+                st.metric("Negative Surprises", len(negative_surprises))
+            
+            # Positive Price Moves
+            positive_moves = earnings_metrics[earnings_metrics['Price Move (%)'] > 0]
+            with col3:
+                st.metric("Positive Price Moves", len(positive_moves))
+            
+            # Guidance Positiv
+            positive_guidance = earnings_metrics[earnings_metrics['Guidance'] == 'Positiv ✓']
+            with col4:
+                st.metric("Positive Guidance", len(positive_guidance))
+        else:
+            st.info("Keine Earnings Metriken verfügbar.")
     else:
         st.info("Keine Daten zur Visualisierung vorhanden.")

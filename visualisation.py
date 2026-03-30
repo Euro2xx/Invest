@@ -376,12 +376,13 @@ class DataVisualization:
     
     def get_eps_comparison(self) -> pd.DataFrame:
         """
-        Berechnet EPS-Vergleiche (Actual vs Estimate)
+        Berechnet EPS-Vergleiche (Actual vs Estimate) inkl. Surprise, Price Move und Guidance
         
         Returns:
-            DataFrame mit EPS-Daten
+            DataFrame mit EPS-Daten und erweiterten Metriken
         """
         eps_data = []
+        df = self.get_dataframe_for_timepoint()
         
         for item in self.data:
             symbol = item.get('Unternehmen', 'Unknown')
@@ -389,7 +390,7 @@ class DataVisualization:
             eps_actual = item.get('EPS Actual', 'N/A')
             datum = item.get('Datum', 'Unknown')
             
-            # Berechne Unterschied nur wenn beide Werte numerisch sind
+            # Berechne EPS Unterschied und Prozentual
             eps_diff = None
             eps_diff_pct = None
             
@@ -398,13 +399,48 @@ class DataVisualization:
                 eps_diff = eps_actual - eps_estimate
                 eps_diff_pct = (eps_diff / abs(eps_estimate)) * 100
             
+            # Berechne Price Move (Preisänderung vom Tag -1 zu Tag +1 relativ zum Ereignis)
+            price_move_pct = None
+            company_prices = df[df['Unternehmen'] == symbol].copy()
+            
+            if not company_prices.empty:
+                # Finde Preise für Tag -1 und Tag +1
+                day_minus_1 = company_prices[company_prices['Zeitpunkt'] == -1]
+                day_plus_1 = company_prices[company_prices['Zeitpunkt'] == 1]
+                
+                if not day_minus_1.empty and not day_plus_1.empty:
+                    price_before = day_minus_1.iloc[0]['Preis']
+                    price_after = day_plus_1.iloc[0]['Preis']
+                    
+                    if price_before > 0:
+                        price_move_pct = ((price_after - price_before) / price_before) * 100
+            
+            # Bestimme Guidance basierend auf EPS Surprise und Price Move
+            guidance = "Neutral"
+            if eps_diff_pct is not None and price_move_pct is not None:
+                eps_positive = eps_diff_pct > 0
+                price_positive = price_move_pct > 0
+                
+                if eps_positive and price_positive:
+                    guidance = "Positiv ✓"
+                elif eps_positive and not price_positive:
+                    guidance = "Enttäuschung"
+                elif not eps_positive and price_positive:
+                    guidance = "Überraschend"
+                else:
+                    guidance = "Negativ ✗"
+            elif eps_diff_pct is not None:
+                guidance = "Positiv ✓" if eps_diff_pct > 0 else "Negativ ✗"
+            
             eps_data.append({
                 'Unternehmen': symbol,
                 'Datum': datum,
                 'EPS Estimate': eps_estimate,
                 'EPS Actual': eps_actual,
                 'EPS Unterschied': eps_diff,
-                'EPS Unterschied %': eps_diff_pct
+                'EPS Surprise (%)': eps_diff_pct,
+                'Price Move (%)': price_move_pct,
+                'Guidance': guidance
             })
         
         return pd.DataFrame(eps_data)
@@ -518,9 +554,140 @@ class DataVisualization:
         )
         
         return fig
-
-
-# Convenience-Funktionen für Streamlit-Integration
+    
+    def plot_earnings_metrics(self) -> go.Figure:
+        """
+        Erstellt eine Grafik mit EPS Surprise, Price Move und Guidance
+        
+        Returns:
+            Plotly Figure-Objekt mit mehreren Subplots
+        """
+        import plotly.subplots as sp
+        
+        eps_df = self.get_eps_comparison()
+        
+        if eps_df.empty or eps_df[['EPS Surprise (%)', 'Price Move (%)']].isna().all().all():
+            print("Keine Daten zur Visualisierung vorhanden")
+            return None
+        
+        # Filter nur Datensätze mit gültigen Metriken
+        eps_valid = eps_df.dropna(subset=['EPS Surprise (%)', 'Price Move (%)'])
+        
+        if eps_valid.empty:
+            return None
+        
+        # Sortiere nach EPS Surprise
+        eps_valid_sorted = eps_valid.sort_values('EPS Surprise (%)', ascending=False)
+        
+        # Erstelle Subplots
+        fig = sp.make_subplots(
+            rows=2, cols=2,
+            subplot_titles=(
+                'EPS Surprise (%)',
+                'Price Move (%) - Earnings Reaction',
+                'EPS Surprise vs Price Move (Scatter)',
+                'Guidance Kategorien'
+            ),
+            specs=[
+                [{"type": "bar"}, {"type": "bar"}],
+                [{"type": "scatter"}, {"type": "pie"}]
+            ],
+            row_heights=[0.5, 0.5],
+            vertical_spacing=0.15,
+            horizontal_spacing=0.12
+        )
+        
+        # 1. EPS Surprise (%) - Balkendiagramm
+        colors_surprise = ['green' if x > 0 else 'red' for x in eps_valid_sorted['EPS Surprise (%)']]
+        fig.add_trace(
+            go.Bar(
+                x=eps_valid_sorted['Unternehmen'],
+                y=eps_valid_sorted['EPS Surprise (%)'],
+                marker=dict(color=colors_surprise),
+                name='EPS Surprise',
+                hovertemplate='<b>%{x}</b><br>EPS Surprise: %{y:.2f}%<extra></extra>',
+                showlegend=False
+            ),
+            row=1, col=1
+        )
+        
+        # 2. Price Move (%) - Balkendiagramm
+        colors_price = ['green' if x > 0 else 'red' for x in eps_valid_sorted['Price Move (%)']]
+        fig.add_trace(
+            go.Bar(
+                x=eps_valid_sorted['Unternehmen'],
+                y=eps_valid_sorted['Price Move (%)'],
+                marker=dict(color=colors_price),
+                name='Price Move',
+                hovertemplate='<b>%{x}</b><br>Price Move: %{y:.2f}%<extra></extra>',
+                showlegend=False
+            ),
+            row=1, col=2
+        )
+        
+        # 3. Scatter Plot: EPS Surprise vs Price Move
+        fig.add_trace(
+            go.Scatter(
+                x=eps_valid_sorted['EPS Surprise (%)'],
+                y=eps_valid_sorted['Price Move (%)'],
+                mode='markers+text',
+                text=eps_valid_sorted['Unternehmen'],
+                textposition='top center',
+                marker=dict(
+                    size=10,
+                    color=eps_valid_sorted['Price Move (%)'],
+                    colorscale='RdYlGn',
+                    showscale=False
+                ),
+                hovertemplate='<b>%{text}</b><br>EPS Surprise: %{x:.2f}%<br>Price Move: %{y:.2f}%<extra></extra>',
+                showlegend=False
+            ),
+            row=2, col=1
+        )
+        
+        # 4. Pie Chart: Guidance Kategorien
+        guidance_counts = eps_valid_sorted['Guidance'].value_counts()
+        colors_guidance = {
+            'Positiv ✓': 'green',
+            'Negativ ✗': 'red',
+            'Neutral': 'gray',
+            'Enttäuschung': 'orange',
+            'Überraschend': 'blue'
+        }
+        pie_colors = [colors_guidance.get(g, 'gray') for g in guidance_counts.index]
+        
+        fig.add_trace(
+            go.Pie(
+                labels=guidance_counts.index,
+                values=guidance_counts.values,
+                marker=dict(colors=pie_colors),
+                hovertemplate='<b>%{label}</b><br>Anzahl: %{value}<extra></extra>',
+                showlegend=False
+            ),
+            row=2, col=2
+        )
+        
+        # Update Axes - nur für Traces mit Achsen (keine Linien wegen Pie Chart)
+        # Row 1 - Bar Charts
+        fig.update_xaxes(title_text="Unternehmen", row=1, col=1)
+        fig.update_yaxes(title_text="EPS Surprise (%)", row=1, col=1)
+        
+        fig.update_xaxes(title_text="Unternehmen", row=1, col=2)
+        fig.update_yaxes(title_text="Price Move (%)", row=1, col=2)
+        
+        # Row 2 Col 1 - Scatter Plot
+        fig.update_xaxes(title_text="EPS Surprise (%)", row=2, col=1)
+        fig.update_yaxes(title_text="Price Move (%)", row=2, col=1)
+        
+        # Update Layout
+        fig.update_layout(
+            title_text='Earnings Metriken: EPS Surprise, Price Move & Guidance',
+            height=900,
+            template='plotly_white',
+            showlegend=False
+        )
+        
+        return fig
 def get_visualization(db_path: str = 'data/Datenbank_test.db') -> DataVisualization:
     """Erstellt eine Visualisierungsinstanz"""
     return DataVisualization(db_path)
